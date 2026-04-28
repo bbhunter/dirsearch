@@ -45,6 +45,8 @@ class XMLReport(FileReportMixin, BaseReport):
         ET.SubElement(target, "contentLength").text = str(result.length)
         ET.SubElement(target, "contentType").text = result.type
         ET.SubElement(target, "redirect").text = result.redirect
+        if result.elapsed:
+            ET.SubElement(target, "elapsed").text = str(round(result.elapsed, 3))
         self.write(file, root)
 
     def write(self, file, root):

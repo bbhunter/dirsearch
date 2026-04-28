@@ -545,6 +545,7 @@ def merge_config(opt: Values) -> Values:
     opt.color = opt.color if opt.color is False else config.safe_getboolean("view", "color", True)
     opt.quiet = opt.quiet or config.safe_getboolean("view", "quiet-mode")
     opt.disable_cli = opt.disable_cli or config.safe_getboolean("view", "disable-cli")
+    opt.verbose = opt.verbose or config.safe_getboolean("view", "verbose")
     opt.redirects_history = opt.redirects_history or config.safe_getboolean(
         "view", "show-redirects-history"
     )

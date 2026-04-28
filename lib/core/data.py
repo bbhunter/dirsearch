@@ -98,6 +98,7 @@ options: dict[str, Any] = {
     "color": True,
     "quiet": False,
     "disable_cli": False,
+    "verbose": False,
     "output_file": None,
     "output_table": None,
     "output_formats": None,
