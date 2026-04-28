@@ -208,6 +208,7 @@ class Requester(BaseRequester):
                 prep = self.session.prepare_request(request)
                 prep.url = url
 
+                start_time = time.perf_counter()
                 origin_response = self.session.send(
                     prep,
                     allow_redirects=options["follow_redirects"],
@@ -215,8 +216,8 @@ class Requester(BaseRequester):
                     proxies=proxies,
                     stream=True,
                 )
-                elapsed = origin_response.elapsed.total_seconds() if origin_response.elapsed else 0.0
-                response = Response(url, origin_response, elapsed)
+                response = Response(url, origin_response)
+                response.elapsed = time.perf_counter() - start_time
 
                 log_msg = f'"{options["http_method"]} {response.url}" {response.status} - {response.length}B'
 
@@ -383,14 +384,17 @@ class AsyncRequester(BaseRequester):
                     extensions={"target": (url if replay else f"/{safequote(path)}").encode()},
                 )
 
+                start_time = time.perf_counter()
                 xresponse = await session.send(
                     request,
                     stream=True,
                     follow_redirects=options["follow_redirects"],
                 )
-                elapsed = xresponse.elapsed.total_seconds() if xresponse.elapsed else 0.0
-                response = await AsyncResponse.create(url, xresponse, elapsed)
+                response = await AsyncResponse.create(url, xresponse)
                 await xresponse.aclose()
+                # Measure the whole streamed request lifecycle so sync and async
+                # modes report the same thing.
+                response.elapsed = time.perf_counter() - start_time
 
                 log_msg = f'"{options["http_method"]} {response.url}" {response.status} - {response.length}B'
 
