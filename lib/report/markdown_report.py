@@ -35,12 +35,13 @@ class MarkdownReport(FileReportMixin, BaseReport):
         header += NEW_LINE
         header += f"Time: {START_TIME}"
         header += NEW_LINE * 2
-        header += "URL | Status | Size | Content Type | Redirection" + NEW_LINE
-        header += "----|--------|------|--------------|------------" + NEW_LINE
+        header += "URL | Status | Size | Content Type | Redirection | Elapsed (ms)" + NEW_LINE
+        header += "----|--------|------|--------------|-------------|-------------" + NEW_LINE
         return header
 
     @locked
     def save(self, file, result):
         md = self.parse(file)
-        md += f"{result.url} | {result.status} | {result.length} | {result.type} | {result.redirect}" + NEW_LINE
+        elapsed_ms = int(result.elapsed * 1000) if result.elapsed else "-"
+        md += f"{result.url} | {result.status} | {result.length} | {result.type} | {result.redirect} | {elapsed_ms}" + NEW_LINE
         self.write(file, md)

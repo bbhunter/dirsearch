@@ -27,7 +27,7 @@ class CSVReport(FileReportMixin, BaseReport):
     __extension__ = "csv"
 
     def new(self):
-        return [["URL", "Status", "Size", "Content Type", "Redirection"]]
+        return [["URL", "Status", "Size", "Content Type", "Redirection", "Elapsed (s)"]]
 
     def parse(self, file):
         with open(file) as fh:
@@ -41,7 +41,8 @@ class CSVReport(FileReportMixin, BaseReport):
     @locked
     def save(self, file, result):
         rows = self.parse(file)
-        rows.append([result.url, result.status, result.length, result.type, result.redirect])
+        elapsed = round(result.elapsed, 3) if result.elapsed else ""
+        rows.append([result.url, result.status, result.length, result.type, result.redirect, elapsed])
         self.write(file, rows)
 
     def write(self, file, rows):

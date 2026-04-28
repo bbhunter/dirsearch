@@ -215,7 +215,8 @@ class Requester(BaseRequester):
                     proxies=proxies,
                     stream=True,
                 )
-                response = Response(url, origin_response)
+                elapsed = origin_response.elapsed.total_seconds() if origin_response.elapsed else 0.0
+                response = Response(url, origin_response, elapsed)
 
                 log_msg = f'"{options["http_method"]} {response.url}" {response.status} - {response.length}B'
 
@@ -387,7 +388,8 @@ class AsyncRequester(BaseRequester):
                     stream=True,
                     follow_redirects=options["follow_redirects"],
                 )
-                response = await AsyncResponse.create(url, xresponse)
+                elapsed = xresponse.elapsed.total_seconds() if xresponse.elapsed else 0.0
+                response = await AsyncResponse.create(url, xresponse, elapsed)
                 await xresponse.aclose()
 
                 log_msg = f'"{options["http_method"]} {response.url}" {response.status} - {response.length}B'

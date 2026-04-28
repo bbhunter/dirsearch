@@ -91,6 +91,11 @@ class CLI:
         time = response.datetime.split()[1]
         message = f"[{time}] {response.status} - {response.size.rjust(6, ' ')} - {target}"
 
+        if options["verbose"]:
+            elapsed_ms = int(response.elapsed * 1000) if response.elapsed else 0
+            content_type = response.type
+            message += f"  ({elapsed_ms}ms, {content_type})"
+
         if response.status in (200, 201, 204):
             message = set_color(message, fore="green")
         elif response.status == 401:
