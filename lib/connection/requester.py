@@ -23,7 +23,7 @@ import http.client
 import random
 import re
 import socket
-from ssl import SSLError
+import ssl
 import threading
 import time
 from typing import Any, Generator
@@ -36,6 +36,11 @@ from requests.packages import urllib3
 from requests_ntlm import HttpNtlmAuth
 from httpx_ntlm import HttpNtlmAuth as HttpxNtlmAuth
 from requests_toolbelt.adapters.socket_options import SocketOptionsAdapter
+
+try:
+    from ssl import SSLCertVerificationError
+except ImportError:
+    SSLCertVerificationError = None
 
 from lib.connection.dns import cached_getaddrinfo
 from lib.connection.response import AsyncResponse, Response
@@ -58,6 +63,125 @@ from lib.utils.mimetype import guess_mimetype
 urllib3.disable_warnings(urllib3.exceptions.SecurityWarning)
 # Use custom `socket.getaddrinfo` for `requests` which supports DNS caching
 socket.getaddrinfo = cached_getaddrinfo
+
+
+def _is_requests_ssl_error(exc: Exception) -> bool:
+    """Check if the exception is a requests-wrapped SSL error.
+
+    The requests library wraps ssl.SSLError inside requests.exceptions.SSLError,
+    so we need to inspect the exception chain to detect SSL errors that aren't
+    direct instances of ssl.SSLError.
+    """
+    if isinstance(exc, requests.exceptions.SSLError):
+        return True
+
+    # Check the exception cause chain (PEP 3134)
+    cause = exc.__cause__
+    while cause is not None:
+        if isinstance(cause, ssl.SSLError):
+            return True
+        cause = cause.__cause__
+
+    # Also check __context__ for implicit chaining
+    context = exc.__context__
+    while context is not None:
+        if isinstance(context, ssl.SSLError):
+            return True
+        context = context.__context__
+
+    return False
+
+
+def _iter_exception_chain(exc: BaseException) -> Generator[BaseException, None, None]:
+    seen = set()
+    pending = [exc]
+
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+
+        seen.add(id(current))
+        yield current
+
+        for attr in ("__cause__", "__context__"):
+            chained = getattr(current, attr, None)
+            if chained is not None:
+                pending.append(chained)
+
+
+def _find_ssl_error(exc: Exception) -> ssl.SSLError | None:
+    for current in _iter_exception_chain(exc):
+        if isinstance(current, ssl.SSLError):
+            return current
+
+    return None
+
+
+def _is_ssl_error(exc: Exception) -> bool:
+    return isinstance(exc, requests.exceptions.SSLError) or _find_ssl_error(exc) is not None
+
+
+def _format_ssl_error(exc: Exception, url: str = "") -> str:
+    """Format SSL error with specific, actionable error messages.
+
+    Provides detailed error messages based on the specific type of SSL error
+    instead of a generic 'Unexpected SSL error' message. This helps users
+    diagnose and fix SSL-related issues.
+    """
+    # Resolve the underlying ssl.SSLError from the exception chain
+    ssl_exc = _find_ssl_error(exc)
+
+    err_detail = str(ssl_exc or exc)
+
+    # Certificate verification errors
+    if SSLCertVerificationError is not None and isinstance(ssl_exc, SSLCertVerificationError):
+        if "self signed certificate" in err_detail.lower():
+            msg = f"SSL certificate verification failed (self-signed certificate): {url}"
+        elif "certificate has expired" in err_detail.lower():
+            msg = f"SSL certificate verification failed (certificate expired): {url}"
+        elif "certificate is not yet valid" in err_detail.lower():
+            msg = f"SSL certificate verification failed (certificate not yet valid): {url}"
+        elif "unable to get local issuer certificate" in err_detail.lower():
+            msg = f"SSL certificate verification failed (missing local issuer certificate): {url}"
+        elif "hostname" in err_detail.lower() and "match" in err_detail.lower():
+            msg = f"SSL certificate verification failed (hostname mismatch): {url}"
+        else:
+            msg = f"SSL certificate verification failed: {err_detail}"
+        logger.warning(f"SSL certificate error: {err_detail}")
+        return msg
+
+    # SSL handshake / protocol errors
+    if ssl_exc is not None:
+        err_lib = getattr(ssl_exc, "library", "")
+        err_reason = getattr(ssl_exc, "reason", "")
+
+        if "wrong version" in err_detail.lower() or "unsupported protocol" in err_detail.lower():
+            msg = f"SSL protocol version mismatch: {url}"
+        elif "handshake" in err_detail.lower():
+            msg = f"SSL handshake failed: {url}"
+        elif "no shared cipher" in err_detail.lower() or "no ciphers" in err_detail.lower():
+            msg = f"SSL handshake failed (no shared cipher suites): {url}"
+        elif err_lib == "SSL" and "EOF" in err_detail:
+            msg = f"SSL connection terminated unexpectedly: {url}"
+        elif "CERTIFICATE_VERIFY_FAILED" in err_detail:
+            msg = f"SSL certificate verification failed: {url}"
+        else:
+            msg = f"SSL error ({err_reason or err_lib or 'unknown'}): {err_detail}"
+
+        logger.warning(f"SSL error for {url}: library={err_lib}, reason={err_reason}, detail={err_detail}")
+        return msg
+
+    # Fallback for wrapped SSL errors where we can't get the underlying exception
+    if "CERTIFICATE_VERIFY_FAILED" in err_detail:
+        msg = f"SSL certificate verification failed: {url}"
+    elif "wrong version" in err_detail.lower():
+        msg = f"SSL protocol version mismatch: {url}"
+    else:
+        msg = f"SSL error: {err_detail}"
+
+    logger.warning(f"SSL error for {url}: {err_detail}")
+    return msg
 
 
 class BaseRequester:
@@ -233,8 +357,8 @@ class Requester(BaseRequester):
 
                 if e == socket.gaierror:
                     err_msg = "Couldn't resolve DNS"
-                elif "SSLError" in str(e):
-                    err_msg = "Unexpected SSL error"
+                elif _is_ssl_error(e):
+                    err_msg = _format_ssl_error(e, url)
                 elif "TooManyRedirects" in str(e):
                     err_msg = f"Too many redirects: {url}"
                 elif "ProxyError" in str(e):
@@ -408,13 +532,13 @@ class AsyncRequester(BaseRequester):
             except Exception as e:
                 logger.exception(e)
 
-                if isinstance(e, httpx.ConnectError):
+                if isinstance(e, httpx.ConnectError) and not _is_ssl_error(e):
                     if str(e).startswith("[Errno -2]"):
                         err_msg = "Couldn't resolve DNS"
                     else:
                         err_msg = f"Cannot connect to: {urlparse(url).netloc}"
-                elif isinstance(e, SSLError):
-                    err_msg = "Unexpected SSL error"
+                elif _is_ssl_error(e):
+                    err_msg = _format_ssl_error(e, url)
                 elif isinstance(e, httpx.TooManyRedirects):
                     err_msg = f"Too many redirects: {url}"
                 elif isinstance(e, httpx.ProxyError):
