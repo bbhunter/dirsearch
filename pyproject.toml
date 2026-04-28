@@ -17,12 +17,11 @@
 #  Author: Mauro Soria
 
 [build-system]
-requires = ["setuptools>=64", "wheel"]
+requires = ["setuptools>=66.1", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "dirsearch"
-version = "0.4.3"
 description = "Advanced web path scanner"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -40,37 +39,13 @@ classifiers = [
     "Topic :: Security",
     "Programming Language :: Python :: 3.9",
 ]
-dependencies = [
-    "PySocks>=1.7.1",
-    "Jinja2>=3.1.6",
-    "defusedxml>=0.7.1",
-    "pyopenssl>=25.3.0",
-    "requests>=2.32.5",
-    "requests-ntlm>=1.3.0",
-    "colorama>=0.4.6",
-    "ntlm-auth>=1.5.0",
-    "beautifulsoup4>=4.12.0",
-    "mysql-connector-python>=9.0.0",
-    "psycopg[binary]>=3.3.0",
-    "defusedcsv>=3.0.0",
-    "requests-toolbelt>=1.0.0",
-    "setuptools>=64.0.0",
-    "httpx>=0.28.0",
-    "httpx-ntlm>=1.4.0",
-]
+dynamic = ["version", "dependencies"]
 
 [project.scripts]
 dirsearch = "dirsearch.dirsearch:main"
 
 [project.urls]
 Homepage = "https://github.com/maurosoria/dirsearch"
-
-[tool.setuptools]
-packages = {find = {}}
-
-[tool.setuptools.package-data]
-"*" = ["*"]
-"db" = ["*"]
 
 [tool.codespell]
 skip = ".git,./db/dicc.txt,./static"
