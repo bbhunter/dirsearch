@@ -29,6 +29,7 @@
 - [Alexandre ZANNI](https://github.com/noraj)
 - [Andrea Draghetti](https://github.com/drego85)
 - [Mohd Shahril](https://github.com/shahril96)
+- [mohamedsolaiman](https://github.com/mohamedsolaiman)
 - [Houziaux Mike](https://twitter.com/Jenaye_fr)
 - [Jannik Vieten](https://github.com/exploide)
 - [MiawOren](https://github.com/0x0d3ad)
