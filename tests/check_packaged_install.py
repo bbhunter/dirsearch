@@ -1,6 +1,8 @@
 import ast
 import importlib.metadata
 import os
+import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -19,7 +21,8 @@ def read_source_version() -> str:
 
 
 def main() -> None:
-    os.chdir(tempfile.mkdtemp(prefix="dirsearch-install-check-"))
+    temp_dir = tempfile.mkdtemp(prefix="dirsearch-install-check-")
+    os.chdir(temp_dir)
 
     from dirsearch.lib.core import settings
 
@@ -30,6 +33,11 @@ def main() -> None:
     package_root = Path(settings.__file__).resolve().parents[2]
     assert (package_root / "config.ini").is_file()
     assert (package_root / "db" / "categories" / "common.txt").is_file()
+    subprocess.run(
+        [sys.executable, "-m", "dirsearch", "--version"],
+        cwd=temp_dir,
+        check=True,
+    )
 
 
 if __name__ == "__main__":
