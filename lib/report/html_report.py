@@ -44,13 +44,16 @@ class HTMLReport(FileReportMixin, BaseReport):
     @locked
     def save(self, file, result):
         results = self.parse(file)
-        results.append({
+        entry = {
             "url": result.url,
             "status": result.status,
             "contentLength": result.length,
             "contentType": result.type,
             "redirect": result.redirect,
-        })
+        }
+        if result.elapsed:
+            entry["elapsed"] = round(result.elapsed, 3)
+        results.append(entry)
         self.write(file, self.generate(results))
 
     def generate(self, results):

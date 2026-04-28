@@ -39,6 +39,10 @@ class PlainTextReport(FileReportMixin, BaseReport):
         data = self.parse(file)
         data += f"{result.status} {readable_size.rjust(6, chr(32))} {result.url}"
 
+        if result.elapsed:
+            elapsed_ms = int(result.elapsed * 1000)
+            data += f"  ({elapsed_ms}ms)"
+
         if result.redirect:
             data += f"  ->  {result.redirect}"
 

@@ -539,6 +539,13 @@ def parse_arguments() -> Values:
     view.add_option(
         "--disable-cli", action="store_true", dest="disable_cli", help="Turn off command-line output"
     )
+    view.add_option(
+        "-v",
+        "--verbose",
+        action="store_true",
+        dest="verbose",
+        help="Show verbose output with response time and content type",
+    )
 
     # Output Settings
     output = OptionGroup(parser, "Output Settings")

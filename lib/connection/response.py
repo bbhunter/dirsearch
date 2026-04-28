@@ -35,7 +35,7 @@ from lib.utils.common import get_readable_size, is_binary, replace_path
 
 
 class BaseResponse:
-    def __init__(self, url, response: requests.Response | httpx.Response) -> None:
+    def __init__(self, url, response: requests.Response | httpx.Response, elapsed: float = 0.0) -> None:
         self.datetime = time.strftime("%Y-%m-%d %H:%M:%S")
         self.url = url
         self.full_path = parse_path(self.url)
@@ -44,6 +44,7 @@ class BaseResponse:
         self.headers = response.headers
         self.redirect = self.headers.get("location", "")
         self.history = [str(res.url) for res in response.history]
+        self.elapsed = elapsed
         self.content = ""
         self.body = b""
 
@@ -80,8 +81,8 @@ class BaseResponse:
 
 
 class Response(BaseResponse):
-    def __init__(self, url, response: requests.Response) -> None:
-        super().__init__(url, response)
+    def __init__(self, url, response: requests.Response, elapsed: float = 0.0) -> None:
+        super().__init__(url, response, elapsed)
 
         for chunk in response.iter_content(chunk_size=ITER_CHUNK_SIZE):
             self.body += chunk
@@ -102,8 +103,8 @@ class Response(BaseResponse):
 
 class AsyncResponse(BaseResponse):
     @classmethod
-    async def create(cls, url, response: httpx.Response) -> AsyncResponse:
-        self = cls(url, response)
+    async def create(cls, url, response: httpx.Response, elapsed: float = 0.0) -> AsyncResponse:
+        self = cls(url, response, elapsed)
         async for chunk in response.aiter_bytes(chunk_size=ITER_CHUNK_SIZE):
             self.body += chunk
 
