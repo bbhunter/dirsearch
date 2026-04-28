@@ -92,6 +92,36 @@ def _is_requests_ssl_error(exc: Exception) -> bool:
     return False
 
 
+def _iter_exception_chain(exc: BaseException) -> Generator[BaseException, None, None]:
+    seen = set()
+    pending = [exc]
+
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+
+        seen.add(id(current))
+        yield current
+
+        for attr in ("__cause__", "__context__"):
+            chained = getattr(current, attr, None)
+            if chained is not None:
+                pending.append(chained)
+
+
+def _find_ssl_error(exc: Exception) -> ssl.SSLError | None:
+    for current in _iter_exception_chain(exc):
+        if isinstance(current, ssl.SSLError):
+            return current
+
+    return None
+
+
+def _is_ssl_error(exc: Exception) -> bool:
+    return isinstance(exc, requests.exceptions.SSLError) or _find_ssl_error(exc) is not None
+
+
 def _format_ssl_error(exc: Exception, url: str = "") -> str:
     """Format SSL error with specific, actionable error messages.
 
@@ -100,20 +130,7 @@ def _format_ssl_error(exc: Exception, url: str = "") -> str:
     diagnose and fix SSL-related issues.
     """
     # Resolve the underlying ssl.SSLError from the exception chain
-    ssl_exc = None
-    if isinstance(exc, ssl.SSLError):
-        ssl_exc = exc
-    else:
-        # Walk the exception chain for wrapped SSL errors
-        for attr in ("__cause__", "__context__"):
-            cause = getattr(exc, attr, None)
-            while cause is not None:
-                if isinstance(cause, ssl.SSLError):
-                    ssl_exc = cause
-                    break
-                cause = getattr(cause, attr, None)
-            if ssl_exc is not None:
-                break
+    ssl_exc = _find_ssl_error(exc)
 
     err_detail = str(ssl_exc or exc)
 
@@ -338,7 +355,7 @@ class Requester(BaseRequester):
 
                 if e == socket.gaierror:
                     err_msg = "Couldn't resolve DNS"
-                elif isinstance(e, ssl.SSLError) or _is_requests_ssl_error(e):
+                elif _is_ssl_error(e):
                     err_msg = _format_ssl_error(e, url)
                 elif "TooManyRedirects" in str(e):
                     err_msg = f"Too many redirects: {url}"
@@ -509,12 +526,12 @@ class AsyncRequester(BaseRequester):
             except Exception as e:
                 logger.exception(e)
 
-                if isinstance(e, httpx.ConnectError):
+                if isinstance(e, httpx.ConnectError) and not _is_ssl_error(e):
                     if str(e).startswith("[Errno -2]"):
                         err_msg = "Couldn't resolve DNS"
                     else:
                         err_msg = f"Cannot connect to: {urlparse(url).netloc}"
-                elif isinstance(e, ssl.SSLError):
+                elif _is_ssl_error(e):
                     err_msg = _format_ssl_error(e, url)
                 elif isinstance(e, httpx.TooManyRedirects):
                     err_msg = f"Too many redirects: {url}"
