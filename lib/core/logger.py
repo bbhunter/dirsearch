@@ -44,6 +44,8 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 logger.disabled = True
 
+LOG_HANDLER_NAME = "dirsearch-log-file"
+
 
 def redact_log_text(text: str) -> str:
     """Remove credentials and query values from rendered log output."""
@@ -78,9 +80,20 @@ class RedactingFormatter(logging.Formatter):
 
 
 def enable_logging() -> None:
-    logger.disabled = False
     formatter = RedactingFormatter('%(asctime)s [%(levelname)s] %(message)s')
-    handler = RotatingFileHandler(options["log_file"], maxBytes=options["log_file_size"])
+    handler = RotatingFileHandler(
+        options["log_file"],
+        maxBytes=options["log_file_size"],
+        backupCount=1,
+    )
+    handler.set_name(LOG_HANDLER_NAME)
     handler.setLevel(logging.DEBUG)
     handler.setFormatter(formatter)
+
+    for existing_handler in tuple(logger.handlers):
+        if existing_handler.get_name() == LOG_HANDLER_NAME:
+            logger.removeHandler(existing_handler)
+            existing_handler.close()
+
     logger.addHandler(handler)
+    logger.disabled = False

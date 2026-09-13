@@ -6,7 +6,7 @@ from lib.core.data import options
 from lib.core.logger import enable_logging, logger, redact_log_text
 
 
-class TestLogRedaction(TestCase):
+class TestLogger(TestCase):
     def setUp(self):
         self.original_options = dict(options)
         self.original_handlers = tuple(logger.handlers)
@@ -15,14 +15,17 @@ class TestLogRedaction(TestCase):
             logger.removeHandler(handler)
 
     def tearDown(self):
-        for handler in tuple(logger.handlers):
-            handler.close()
-            logger.removeHandler(handler)
+        self.close_handlers()
         for handler in self.original_handlers:
             logger.addHandler(handler)
         logger.disabled = self.original_disabled
         options.clear()
         options.update(self.original_options)
+
+    def close_handlers(self):
+        for handler in tuple(logger.handlers):
+            handler.close()
+            logger.removeHandler(handler)
 
     def test_redacts_url_secrets_without_hiding_request_metadata(self):
         options["proxy_auth"] = "proxy-user:scheme-less-password"
@@ -67,10 +70,7 @@ class TestLogRedaction(TestCase):
                 logger.exception(error)
             logger.info('THREAD-7 started')
 
-            for handler in tuple(logger.handlers):
-                handler.flush()
-                handler.close()
-                logger.removeHandler(handler)
+            self.close_handlers()
             with open(log_path, encoding="utf-8") as log_file:
                 contents = log_file.read()
 
@@ -92,3 +92,45 @@ class TestLogRedaction(TestCase):
         self.assertIn("Traceback (most recent call last)", contents)
         self.assertIn("ValueError: Invalid proxy URL", contents)
         self.assertIn("THREAD-7 started", contents)
+
+    def test_rotates_log_file_at_configured_size(self):
+        with tempfile.TemporaryDirectory() as root:
+            log_path = os.path.join(root, "dirsearch.log")
+            options["log_file"] = log_path
+            options["log_file_size"] = 256
+            enable_logging()
+
+            for index in range(20):
+                logger.info("entry-%02d-%s", index, "x" * 40)
+            for handler in logger.handlers:
+                handler.flush()
+            self.close_handlers()
+
+            self.assertTrue(os.path.exists(f"{log_path}.1"))
+            self.assertFalse(os.path.exists(f"{log_path}.2"))
+            self.assertLessEqual(os.path.getsize(log_path), 256)
+            self.assertLessEqual(os.path.getsize(f"{log_path}.1"), 256)
+            with open(log_path, encoding="utf-8") as log_file:
+                self.assertIn("entry-19-", log_file.read())
+
+    def test_enabling_logging_twice_does_not_duplicate_records(self):
+        with tempfile.TemporaryDirectory() as root:
+            log_path = os.path.join(root, "dirsearch.log")
+            options["log_file"] = log_path
+            options["log_file_size"] = 0
+
+            enable_logging()
+            first_handler = logger.handlers[0]
+            enable_logging()
+            logger.info("single-record")
+            for handler in logger.handlers:
+                handler.flush()
+
+            handler_count = len(logger.handlers)
+            first_handler_closed = first_handler.stream is None
+            self.close_handlers()
+
+            self.assertEqual(handler_count, 1)
+            self.assertTrue(first_handler_closed)
+            with open(log_path, encoding="utf-8") as log_file:
+                self.assertEqual(log_file.read().count("single-record"), 1)
